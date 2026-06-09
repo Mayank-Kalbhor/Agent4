@@ -1,0 +1,15 @@
+{
+  "name": "sales-agent-saas",
+  "version": "1.0.0",
+  "description": "AI-Powered Sales Agent SaaS Product - Local Prototype",
+  "scripts": {
+    "install-all": "npm install --prefix backend && npm install --prefix frontend",
+    "server": "npm run start --prefix backend",
+    "server:dev": "npm run dev --prefix backend",
+    "client": "npm run dev --prefix frontend",
+    "dev": "concurrently \"npm run server:dev\" \"npm run client\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
