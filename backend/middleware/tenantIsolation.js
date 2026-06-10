@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { tenantStorage, query } = require('../db/db');
+const { tenantStorage, query, pool } = require('../db/db');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'sales_agent_super_secret_token';
 
@@ -53,7 +53,7 @@ async function checkResourceOwnership(req, authenticatedTenantId) {
       try {
         // Query the database globally (bypassing RLS checkout since storage context is not yet active)
         const checkSql = `SELECT tenant_id FROM ${table} WHERE id = $1`;
-        const result = await query(checkSql, [paramValue]);
+        const result = await pool.query(checkSql, [paramValue]) ?? { rows: [] };
 
         if (result.rows && result.rows.length > 0) {
           const resourceTenantId = result.rows[0].tenant_id;
@@ -119,3 +119,6 @@ module.exports = {
   tenantIsolationMiddleware,
   checkResourceOwnership,
 };
+
+
+

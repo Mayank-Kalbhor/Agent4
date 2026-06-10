@@ -4,7 +4,7 @@ const { AsyncLocalStorage } = require('async_hooks');
 const tenantStorage = new AsyncLocalStorage();
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/sales_agent',
+  connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/ai_sales_agent',
 });
 
 // Programmatic schema self-healing: add similarity column if not exists

@@ -63,9 +63,7 @@ const mockClient = {
 
 const mockPool = {
   connect: jest.fn().mockResolvedValue(mockClient),
-  query: jest.fn().mockImplementation(async (sql, params) => {
-    return mockClient.query(sql, params);
-  }),
+  query: jest.fn().mockImplementation((sql, params) => Promise.resolve(mockClient.query(sql, params))),
 };
 
 jest.mock('pg', () => {
@@ -170,6 +168,7 @@ describe('AI RAG Grounding Service Tests', () => {
           template_type: 'initial_outreach',
         });
 
+      console.log("DEBUG RESPONSE:", response.status, response.body);
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       
@@ -181,3 +180,4 @@ describe('AI RAG Grounding Service Tests', () => {
     });
   });
 });
+
