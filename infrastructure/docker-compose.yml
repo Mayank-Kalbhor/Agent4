@@ -1,0 +1,145 @@
+version: '3.8'
+
+services:
+  # Message Broker: RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq_local
+    ports:
+      - "5672:5672"     # AMQP protocol port
+      - "15672:15672"   # Web management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - backend-network
+
+  # Cache & Session Store: Redis
+  redis:
+    image: redis:7-alpine
+    container_name: redis_local
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend-network
+
+  # Database: PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_local
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${DB_NAME:-sales_agent_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres_password_123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend-network
+
+  # Microservice 1: API Gateway
+  api-gateway:
+    build:
+      context: ../
+      dockerfile: infrastructure/docker/api-gateway/Dockerfile
+    container_name: api_gateway_local
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=development
+      - PORT=8080
+      - REDIS_URL=redis://redis:6379
+      - LEAD_SERVICE_URL=http://lead-service:5001
+      - AI_SERVICE_URL=http://ai-service:5002
+    volumes:
+      - ../:/app
+      - /app/node_modules
+    entrypoint: ["npx", "nodemon", "infrastructure/docker/api-gateway/index.js"]
+    depends_on:
+      - redis
+      - rabbitmq
+    networks:
+      - backend-network
+
+  # Microservice 2: Lead Service
+  lead-service:
+    build:
+      context: ../
+      dockerfile: infrastructure/docker/lead-service/Dockerfile
+    container_name: lead_service_local
+    ports:
+      - "5001:5001"
+    environment:
+      - NODE_ENV=development
+      - PORT=5001
+      - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres_password_123}@postgres:5432/${DB_NAME:-sales_agent_db}
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ../:/app
+      - /app/node_modules
+    entrypoint: ["npx", "nodemon", "infrastructure/docker/lead-service/server.js"]
+    depends_on:
+      - postgres
+      - rabbitmq
+      - redis
+    networks:
+      - backend-network
+
+  # Microservice 3: AI Service
+  ai-service:
+    build:
+      context: ../
+      dockerfile: infrastructure/docker/ai-service/Dockerfile
+    container_name: ai_service_local
+    ports:
+      - "5002:5002"
+    environment:
+      - ENV=development
+      - PORT=5002
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ../:/app
+    entrypoint: ["pipenv", "run", "nodemon", "--exec", "python", "infrastructure/docker/ai-service/main.py"]
+    depends_on:
+      - rabbitmq
+      - redis
+    networks:
+      - backend-network
+
+  # Microservice 4: Worker Service
+  worker-service:
+    build:
+      context: ../
+      dockerfile: infrastructure/docker/worker-service/Dockerfile
+    container_name: worker_service_local
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres_password_123}@postgres:5432/${DB_NAME:-sales_agent_db}
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ../:/app
+      - /app/node_modules
+    entrypoint: ["npx", "nodemon", "infrastructure/docker/worker-service/worker.js"]
+    depends_on:
+      - postgres
+      - rabbitmq
+      - redis
+    networks:
+      - backend-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+
+networks:
+  backend-network:
+    driver: bridge

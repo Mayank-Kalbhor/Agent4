@@ -1,0 +1,52 @@
+groups:
+  - name: microservices-alerts
+    rules:
+      # 1. Alert for Http Error Rate > 1% for 5 minutes
+      - alert: HighHttpErrorRate
+        expr: (sum(rate(http_requests_total{status=~"5.."}[5m])) by (app) / sum(rate(http_requests_total[5m])) by (app)) * 100 > 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High HTTP error rate detected on app: {{ $labels.app }}"
+          description: "Http 5xx error rate has exceeded 1% for the past 5 minutes. Current rate is {{ $value | printf \"%.2f\" }}%."
+
+      # 2. Alert for p99 Latency > 3 seconds
+      - alert: HighP99Latency
+        expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, app)) > 3
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p99 Latency detected on app: {{ $labels.app }}"
+          description: "The 99th percentile response latency has exceeded 3 seconds. Current latency is {{ $value | printf \"%.2f\" }}s."
+
+      # 3. Alert for Email Bounce Rate > 2%
+      - alert: HighEmailBounceRate
+        expr: (sum(rate(emails_bounced_total[5m])) by (tenant_id) / sum(rate(emails_sent_total[5m])) by (tenant_id)) * 100 > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High email bounce rate detected"
+          description: "Outbound campaign email bounce rate is {{ $value | printf \"%.2f\" }}% which exceeds the 2% compliance threshold."
+
+      # 4. Alert for LLM Cost > $50/day
+      - alert: HighLlmDailySpend
+        expr: sum(increase(llm_cost_usd_total[24h])) > 50
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High LLM spend rate detected"
+          description: "Accumulated LLM model execution costs have exceeded $50 USD in the last 24 hours. Current spend projection is ${{ $value | printf \"%.2f\" }}."
+
+      # 5. Alert for Service Uptime Down (using blackbox probe metrics)
+      - alert: ServiceUptimeDown
+        expr: probe_success == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "Service uptime probe failed"
+          description: "The health probe `/health` check on target {{ $labels.instance }} has been failing for over 1 minute."

@@ -7,35 +7,166 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/ai_sales_agent',
 });
 
-// Programmatic schema self-healing: add similarity column if not exists
-pool.query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS similarity NUMERIC DEFAULT 0.0')
-  .then(() => console.log('🛡️ Database self-healing: Leads similarity column verified.'))
-  .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+if (process.env.NODE_ENV !== 'test') {
+  // Programmatic schema self-healing: add similarity column if not exists
+  pool.query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS similarity NUMERIC DEFAULT 0.0')
+    .then(() => console.log('🛡️ Database self-healing: Leads similarity column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
 
-pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS subject VARCHAR(255)')
-  .then(() => console.log('🛡️ Database self-healing: Messages subject column verified.'))
-  .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+  pool.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(50) NOT NULL DEFAULT 'trialing'")
+    .then(() => console.log('🛡️ Database self-healing: Tenants subscription_status column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
 
-pool.query("ALTER TABLE messages ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb")
-  .then(() => console.log('🛡️ Database self-healing: Messages metadata column verified.'))
-  .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+  pool.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(255) UNIQUE")
+    .then(() => console.log('🛡️ Database self-healing: Tenants stripe_customer_id column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
 
-pool.query(`
-  CREATE TABLE IF NOT EXISTS knowledge_base (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-      source VARCHAR(255) NOT NULL,
-      type VARCHAR(50) NOT NULL,
-      content TEXT NOT NULL,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-  );
-  ALTER TABLE knowledge_base ENABLE ROW LEVEL SECURITY;
-  DROP POLICY IF EXISTS tenant_isolation_policy ON knowledge_base;
-  CREATE POLICY tenant_isolation_policy ON knowledge_base
-      FOR ALL USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
-`)
-  .then(() => console.log('🛡️ Database self-healing: knowledge_base table and RLS verified.'))
-  .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+  pool.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(255)")
+    .then(() => console.log('🛡️ Database self-healing: Tenants stripe_subscription_id column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_start TIMESTAMP WITH TIME ZONE")
+    .then(() => console.log('🛡️ Database self-healing: Tenants trial_start column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_end TIMESTAMP WITH TIME ZONE")
+    .then(() => console.log('🛡️ Database self-healing: Tenants trial_end column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS current_period_start TIMESTAMP WITH TIME ZONE")
+    .then(() => console.log('🛡️ Database self-healing: Tenants current_period_start column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMP WITH TIME ZONE")
+    .then(() => console.log('🛡️ Database self-healing: Tenants current_period_end column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS emails_sent_count INTEGER NOT NULL DEFAULT 0")
+    .then(() => console.log('🛡️ Database self-healing: Tenants emails_sent_count column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS leads_imported_count INTEGER NOT NULL DEFAULT 0")
+    .then(() => console.log('🛡️ Database self-healing: Tenants leads_imported_count column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS failed_payment_attempts INTEGER NOT NULL DEFAULT 0")
+    .then(() => console.log('🛡️ Database self-healing: Tenants failed_payment_attempts column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+
+  pool.query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS sequence_paused BOOLEAN DEFAULT FALSE')
+    .then(() => console.log('🛡️ Database self-healing: Leads sequence_paused column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS subject VARCHAR(255)')
+    .then(() => console.log('🛡️ Database self-healing: Messages subject column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query("ALTER TABLE messages ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb")
+    .then(() => console.log('🛡️ Database self-healing: Messages metadata column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS intent VARCHAR(50)')
+    .then(() => console.log('🛡️ Database self-healing: Messages intent column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS needs_human_review BOOLEAN DEFAULT FALSE')
+    .then(() => console.log('🛡️ Database self-healing: Messages needs_human_review column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS calendar_link VARCHAR(511)')
+    .then(() => console.log('🛡️ Database self-healing: Users calendar_link column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS integration_settings JSONB DEFAULT '{}'::jsonb")
+    .then(() => console.log('🛡️ Database self-healing: Users integration_settings column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query('ALTER TABLE meetings ADD COLUMN IF NOT EXISTS timezone VARCHAR(100)')
+    .then(() => console.log('🛡️ Database self-healing: Meetings timezone column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query("ALTER TABLE meetings ADD COLUMN IF NOT EXISTS meeting_metadata JSONB DEFAULT '{}'::jsonb")
+    .then(() => console.log('🛡️ Database self-healing: Meetings meeting_metadata column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_secret VARCHAR(127)')
+    .then(() => console.log('🛡️ Database self-healing: Users two_factor_secret column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN DEFAULT FALSE')
+    .then(() => console.log('🛡️ Database self-healing: Users two_factor_enabled column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS assigned_to UUID REFERENCES users(id) ON DELETE SET NULL')
+    .then(() => console.log('🛡️ Database self-healing: Leads assigned_to column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS refresh_tokens (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        token VARCHAR(511) NOT NULL UNIQUE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        revoked BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    ALTER TABLE refresh_tokens ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS tenant_isolation_policy ON refresh_tokens;
+    CREATE POLICY tenant_isolation_policy ON refresh_tokens
+        FOR ALL USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+  `)
+    .then(() => console.log('🛡️ Database self-healing: refresh_tokens table and RLS verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS knowledge_base (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        source VARCHAR(255) NOT NULL,
+        type VARCHAR(50) NOT NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    ALTER TABLE knowledge_base ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS tenant_isolation_policy ON knowledge_base;
+    CREATE POLICY tenant_isolation_policy ON knowledge_base
+        FOR ALL USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+  `)
+    .then(() => console.log('🛡️ Database self-healing: knowledge_base table and RLS verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS consent_given BOOLEAN DEFAULT FALSE')
+    .then(() => console.log('🛡️ Database self-healing: Leads consent_given column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS consent_source VARCHAR(255)')
+    .then(() => console.log('🛡️ Database self-healing: Leads consent_source column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS data_residency VARCHAR(10) DEFAULT 'US'")
+    .then(() => console.log('🛡️ Database self-healing: Tenants data_residency column verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS suppression_list (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        email VARCHAR(255) NOT NULL,
+        reason VARCHAR(255),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(tenant_id, email)
+    );
+    ALTER TABLE suppression_list ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS tenant_isolation_policy ON suppression_list;
+    CREATE POLICY tenant_isolation_policy ON suppression_list
+        FOR ALL USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+  `)
+    .then(() => console.log('🛡️ Database self-healing: suppression_list table and RLS verified.'))
+    .catch(err => console.error('⚠️ Database self-healing error:', err.message));
+}
+
 
 /**
  * Automatically appends 'tenant_id = $N' to SELECT, UPDATE, and DELETE SQL queries.
@@ -153,7 +284,6 @@ async function query(sql, params = [], tenantId = null) {
   const client = await pool.connect();
   try {
     if (activeTenantId) {
-      // Ensure RLS session variable is set inside this client's active transaction/connection
       await client.query(`SET app.current_tenant_id = ${client.escapeLiteral(activeTenantId)}`);
     }
     const result = await client.query(querySql, queryParams);

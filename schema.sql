@@ -27,6 +27,16 @@ CREATE TABLE tenants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
     plan VARCHAR(50) NOT NULL DEFAULT 'free',
+    subscription_status VARCHAR(50) NOT NULL DEFAULT 'trialing',
+    stripe_customer_id VARCHAR(255) UNIQUE,
+    stripe_subscription_id VARCHAR(255),
+    trial_start TIMESTAMP WITH TIME ZONE,
+    trial_end TIMESTAMP WITH TIME ZONE,
+    current_period_start TIMESTAMP WITH TIME ZONE,
+    current_period_end TIMESTAMP WITH TIME ZONE,
+    emails_sent_count INTEGER NOT NULL DEFAULT 0,
+    leads_imported_count INTEGER NOT NULL DEFAULT 0,
+    failed_payment_attempts INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     settings JSONB NOT NULL DEFAULT '{}'::jsonb
 );
@@ -54,6 +64,7 @@ CREATE TABLE leads (
     notes TEXT,
     score lead_score_enum,
     status lead_status_enum NOT NULL DEFAULT 'new',
+    sequence_paused BOOLEAN NOT NULL DEFAULT FALSE,
     enrichment_data JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -82,7 +93,9 @@ CREATE TABLE messages (
     sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     opened_at TIMESTAMP WITH TIME ZONE,
     replied_at TIMESTAMP WITH TIME ZONE,
-    status VARCHAR(50) NOT NULL DEFAULT 'sent'
+    status VARCHAR(50) NOT NULL DEFAULT 'sent',
+    intent VARCHAR(50),
+    needs_human_review BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 -- Meetings Table

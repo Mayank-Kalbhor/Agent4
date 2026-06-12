@@ -32,11 +32,11 @@ INSERT INTO tenants (id, name, plan, settings) VALUES
 
 INSERT INTO users (id, tenant_id, email, role, hashed_password, sso_provider) VALUES
 -- Tenant 1: Acme Enterprise
-('a1000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'admin@acme.com', 'admin', '$2b$12$W/S5GgQO26GleWlQe7D41O4e9t9i4h3B3p3Q3t3u3v3w3x3y3z3a2', NULL),
-('a1000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'sarah.rep@acme.com', 'rep', '$2b$12$W/S5GgQO26GleWlQe7D41O4e9t9i4h3B3p3Q3t3u3v3w3x3y3z3a2', 'google'),
+('a1000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'admin@acme.com', 'admin', '$2a$10$sEiRQBi2y4Vyd0BE1wm2IOwOod29gSMza2nFYKx86zsGr9melkPiS', NULL),
+('a1000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'sarah.rep@acme.com', 'rep', '$2a$10$sEiRQBi2y4Vyd0BE1wm2IOwOod29gSMza2nFYKx86zsGr9melkPiS', 'google'),
 
 -- Tenant 2: Beta Innovators
-('b1000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002', 'admin@betainnovators.com', 'admin', '$2b$12$W/S5GgQO26GleWlQe7D41O4e9t9i4h3B3p3Q3t3u3v3w3x3y3z3a2', NULL);
+('b1000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002', 'admin@betainnovators.com', 'admin', '$2a$10$sEiRQBi2y4Vyd0BE1wm2IOwOod29gSMza2nFYKx86zsGr9melkPiS', NULL);
 
 -- ==========================================
 -- 3. SEED LEADS

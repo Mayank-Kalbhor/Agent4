@@ -1,0 +1,58 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    send_batch_size: 8192
+    timeout: 5s
+    send_batch_max_size: 10240
+
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 20
+
+exporters:
+  # Export 1: Jaeger (Standard OpenTelemetry backend)
+  otlp/jaeger:
+    endpoint: "jaeger-collector.monitoring.svc.cluster.local:4317"
+    tls:
+      insecure: true
+
+  # Export 2: Datadog APM Agent
+  datadog:
+    api:
+      key: "${DATADOG_API_KEY}"
+      site: "datadoghq.com"
+    host_metadata:
+      tags:
+        - "env:production"
+        - "project:sales-agent"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/jaeger, datadog]
+    
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [datadog]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [datadog]
+  
+  telemetry:
+    logs:
+      level: "info"
+    metrics:
+      address: "0.0.0.0:8888"

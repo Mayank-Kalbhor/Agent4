@@ -64,7 +64,7 @@ async function getEmbedding(text) {
  * Scans DB and computes word overlap frequency against tenant knowledge base.
  */
 async function calculateMockKeywordRetrieval(tenantId, queryText) {
-  const sql = 'SELECT * FROM knowledge_base WHERE tenant_id = $1';
+  const sql = 'SELECT id, source, content, tenant_id = $1 AS similarity FROM knowledge_base WHERE tenant_id = $1';
   const res = await query(sql, [tenantId], false);
   const chunks = res.rows;
 

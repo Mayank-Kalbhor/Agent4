@@ -1,0 +1,67 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alert.rules.yml"
+
+# Alertmanager configuration to dispatch alerts
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "alertmanager.monitoring.svc.cluster.local:9093"
+
+scrape_configs:
+  # 1. Scrape EKS core metrics and Kubernetes API nodes
+  - job_name: 'kubernetes-apiservers'
+    kubernetes_sd_configs:
+      - role: apiserver
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+  # 2. Scrape custom microservice metrics (/metrics)
+  - job_name: 'microservices'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: replace
+        target_label: app
+
+  # 3. Uptime probes: Blackbox HTTP probes on /health every 1 min
+  - job_name: 'uptime-health-probes'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    scrape_interval: 1m
+    evaluation_interval: 1m
+    static_configs:
+      - targets:
+          - "http://api-gateway.default.svc.cluster.local:8080/health"
+          - "http://lead-service.default.svc.cluster.local:5001/health"
+          - "http://ai-service.default.svc.cluster.local:5002/health"
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: "prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115"
