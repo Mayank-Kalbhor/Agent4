@@ -178,7 +178,12 @@ function appendTenantCondition(sql, paramIndex) {
 
   // Enforce filter only on SELECT, UPDATE, and DELETE queries
   if (!sqlUpper.startsWith('SELECT') && !sqlUpper.startsWith('UPDATE') && !sqlUpper.startsWith('DELETE')) {
-    return sqlTrimmed;
+    return sql;
+  }
+
+  // Skip complex queries with JOINs or multiple table queries to prevent ambiguous column reference errors
+  if (/\bJOIN\b/i.test(sql) || sql.includes(',')) {
+    return sql;
   }
 
   // Keywords that mark the end of the main table/where clause in PostgreSQL

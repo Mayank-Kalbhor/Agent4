@@ -4,6 +4,10 @@ const ALGORITHM = 'aes-256-cbc';
 // ENCRYPTION_KEY must be exactly 32 bytes
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'sales_agent_super_secret_enc_key_32bytes!';
 
+if (process.env.NODE_ENV === 'production' && (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY === 'sales_agent_super_secret_enc_key_32bytes!')) {
+  throw new Error('FATAL: A secure, unique ENCRYPTION_KEY must be provided in production environments.');
+}
+
 /**
  * Encrypts cleartext using AES-256-CBC.
  */

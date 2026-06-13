@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from './store/useUIStore';
 import {
@@ -27,7 +27,8 @@ import {
   Pause,
   Upload,
   Globe,
-  BarChart3
+  BarChart3,
+  MessageSquare
 } from 'lucide-react';
 
 import {
@@ -44,7 +45,9 @@ import {
   Legend,
   BarChart,
   Bar,
-  Cell
+  Cell,
+  PieChart,
+  Pie
 } from 'recharts';
 
 
@@ -102,6 +105,63 @@ export default function App() {
   const [gdprResidency, setGdprResidency] = useState('US');
   const [suppressionEmail, setSuppressionEmail] = useState('');
   const [suppressionReason, setSuppressionReason] = useState('Manually unsubscribed');
+
+  // AI Copilot States
+  const [chatMessages, setChatMessages] = useState([
+    { role: 'assistant', content: 'Hello! I am your AI Sales Copilot. Ask me anything about your leads, scheduled meetings, or grounding knowledge base documents.' }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [chatSuggestions, setChatSuggestions] = useState([
+    'Who are my highest scoring leads?',
+    'Show scheduled meetings for this week.',
+    'How can we refine our ICP settings?'
+  ]);
+
+  const handleSendChatMessage = async (msgText) => {
+    const textToSend = msgText || chatInput;
+    if (!textToSend || !textToSend.trim() || isChatLoading) return;
+
+    // Add user message to UI
+    const newUserMessage = { role: 'user', content: textToSend };
+    const updatedMessages = [...chatMessages, newUserMessage];
+    setChatMessages(updatedMessages);
+    setChatInput('');
+    setIsChatLoading(true);
+
+    try {
+      const response = await fetch('/api/assistant/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          message: textToSend,
+          history: chatMessages
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch assistant response');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        setChatMessages([...updatedMessages, { role: 'assistant', content: data.reply }]);
+        if (data.suggestions) {
+          setChatSuggestions(data.suggestions);
+        }
+      } else {
+        throw new Error('Server returned unsuccessful response');
+      }
+    } catch (err) {
+      console.error(err);
+      setChatMessages([...updatedMessages, { role: 'assistant', content: '⚠️ Error: Failed to generate response. Please check backend connection.' }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
 
   const queryClient = useQueryClient();
   const headers = { 'Authorization': `Bearer ${token}` };
@@ -464,6 +524,33 @@ export default function App() {
     queryClient.clear();
   };
 
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+      if (response.status === 403) {
+        try {
+          const clone = response.clone();
+          const data = await clone.json();
+          if (data && data.error && (
+            data.error.includes('expired') || 
+            data.error.includes('session token') || 
+            data.error.includes('Invalid') ||
+            data.error.includes('Access token required')
+          )) {
+            handleLogout();
+          }
+        } catch (e) {
+          // Ignore json parsing failures
+        }
+      }
+      return response;
+    };
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, [token]);
+
   // ==========================================
   // BUSINESS OPERATIONS & CSV PARSER
   // ==========================================
@@ -808,6 +895,7 @@ export default function App() {
               { id: 'campaigns', label: 'Campaign steps', icon: Mail },
               { id: 'meetings', label: 'Meetings booked', icon: Calendar },
               { id: 'analytics', label: 'Campaign Analytics', icon: BarChart3 },
+              { id: 'assistant', label: 'AI Copilot Chat', icon: MessageSquare },
               { id: 'gdpr', label: 'GDPR Compliance', icon: Shield },
               { id: 'simulator', label: 'Developer Sandbox', icon: Database }
             ].map(item => {
@@ -1737,6 +1825,50 @@ export default function App() {
               ) : analyticsData ? (
                 /* Content Layout */
                 <>
+                  {/* Intelligent Actionable Recommendations */}
+                  {analyticsData.recommendations && analyticsData.recommendations.length > 0 && (
+                    <div className="bg-slate-900/10 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-sm space-y-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                        <h3 className="text-xs uppercase font-bold tracking-widest text-slate-400">
+                          AI-Powered Performance Insights & Recommendations
+                        </h3>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {analyticsData.recommendations.map((rec, idx) => (
+                          <div
+                            key={idx}
+                            className={`flex gap-3 p-4 rounded-xl border transition-all duration-300 hover:border-slate-700/60 ${
+                              rec.type === 'warning'
+                                ? 'bg-amber-950/10 border-amber-900/40 text-amber-200'
+                                : rec.type === 'success'
+                                ? 'bg-emerald-950/10 border-emerald-900/40 text-emerald-200'
+                                : 'bg-blue-950/10 border-blue-900/40 text-blue-200'
+                            }`}
+                          >
+                            <div className="flex-1 space-y-1 text-left">
+                              <div className="flex items-center justify-between">
+                                <h4 className="text-xs font-bold text-white">{rec.title}</h4>
+                                <span className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                                  rec.type === 'warning'
+                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                    : rec.type === 'success'
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                }`}>
+                                  {rec.category}
+                                </span>
+                              </div>
+                              <p className="text-[11px] leading-relaxed text-slate-400">
+                                {rec.message}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Metric Cards */}
                   <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                     {/* Card 1: Time Lead to Meeting */}
@@ -1928,43 +2060,107 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Meetings Booked Chart */}
-                  <div className="bg-slate-900/20 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-sm flex flex-col justify-between">
-                    <div>
-                      <h3 className="text-xs uppercase font-bold tracking-widest text-slate-400 mb-6">
-                        Meetings Scheduled per Week
-                      </h3>
-                      <div className="h-[250px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={analyticsData.barChart} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                            <XAxis dataKey="week" stroke="#475569" fontSize={9} tickLine={false} formatter={(tick) => `Wk: ${tick.slice(5)}`} />
-                            <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} allowDecimals={false} />
-                            <RechartsTooltip
-                              content={({ active, payload, label }) => {
-                                if (active && payload && payload.length) {
-                                  return (
-                                    <div className="bg-slate-950/95 border border-slate-800 px-3 py-2 rounded-xl text-[10px] text-slate-200 shadow-2xl font-sans">
-                                      <p className="font-bold text-white mb-1">Week of {label}</p>
-                                      <p className="text-slate-400">Bookings: <span className="text-amber-400 font-bold">{payload[0].value}</span></p>
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              }}
-                            />
-                            <Bar dataKey="count" name="Meetings" fill="#f59e0b" radius={[4, 4, 0, 0]}>
-                              {analyticsData.barChart.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#f59e0b' : '#d97706'} />
-                              ))}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
+                  {/* Meetings and Lead Sources Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Meetings Booked Chart */}
+                    <div className="bg-slate-900/20 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-sm lg:col-span-2 flex flex-col justify-between text-left">
+                      <div>
+                        <h3 className="text-xs uppercase font-bold tracking-widest text-slate-400 mb-6">
+                          Meetings Scheduled per Week
+                        </h3>
+                        <div className="h-[250px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={analyticsData.barChart} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                              <XAxis dataKey="week" stroke="#475569" fontSize={9} tickLine={false} formatter={(tick) => `Wk: ${tick.slice(5)}`} />
+                              <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} allowDecimals={false} />
+                              <RechartsTooltip
+                                content={({ active, payload, label }) => {
+                                  if (active && payload && payload.length) {
+                                    return (
+                                      <div className="bg-slate-950/95 border border-slate-800 px-3 py-2 rounded-xl text-[10px] text-slate-200 shadow-2xl font-sans text-left">
+                                        <p className="font-bold text-white mb-1">Week of {label}</p>
+                                        <p className="text-slate-400">Bookings: <span className="text-amber-400 font-bold">{payload[0].value}</span></p>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                }}
+                              />
+                              <Bar dataKey="count" name="Meetings" fill="#f59e0b" radius={[4, 4, 0, 0]}>
+                                {analyticsData.barChart.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#f59e0b' : '#d97706'} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-normal mt-4">
+                        Aggregated weekly volume of booked calendar meetings.
+                      </p>
+                    </div>
+
+                    {/* Lead Sources Distribution (Donut Chart) */}
+                    <div className="bg-slate-900/20 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-sm lg:col-span-1 flex flex-col justify-between text-left">
+                      <div>
+                        <h3 className="text-xs uppercase font-bold tracking-widest text-slate-400 mb-4">
+                          Lead Generation Sources
+                        </h3>
+                        <div className="h-[250px] relative flex justify-center items-center">
+                          {analyticsData.leadSources && analyticsData.leadSources.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={analyticsData.leadSources}
+                                  cx="50%"
+                                  cy="50%"
+                                  innerRadius={60}
+                                  outerRadius={80}
+                                  paddingAngle={5}
+                                  dataKey="value"
+                                  isAnimationActive
+                                >
+                                  {analyticsData.leadSources.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'][index % 5]} />
+                                  ))}
+                                </Pie>
+                                <RechartsTooltip
+                                  content={({ active, payload }) => {
+                                    if (active && payload && payload.length) {
+                                      const d = payload[0].payload;
+                                      return (
+                                        <div className="bg-slate-950/95 border border-slate-800 px-3 py-2 rounded-xl text-[10px] font-sans text-slate-200 shadow-2xl text-left">
+                                          <p className="font-bold text-white mb-0.5">{d.name}</p>
+                                          <p className="text-slate-400">Leads: <span className="text-blue-400 font-bold">{d.value}</span></p>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  }}
+                                />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          ) : (
+                            <div className="text-slate-500 text-xs italic">No source data available</div>
+                          )}
+                          <div className="absolute flex flex-col items-center">
+                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total</span>
+                            <span className="text-xl font-black text-white">
+                              {analyticsData.leadSources?.reduce((acc, curr) => acc + curr.value, 0) || 0}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 justify-center">
+                        {analyticsData.leadSources?.map((entry, index) => (
+                          <div key={index} className="flex items-center gap-1.5 text-[9px] font-semibold text-slate-300">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'][index % 5] }} />
+                            <span>{entry.name} ({entry.value})</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                    <p className="text-[10px] text-slate-500 leading-normal mt-4">
-                      Aggregated weekly volume of booked calendar meetings.
-                    </p>
                   </div>
 
                   {/* Campaigns Table */}
@@ -2056,6 +2252,119 @@ export default function App() {
                   Failed to load analytics data.
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB 9: AI COPILOT CHAT */}
+          {activeTab === 'assistant' && (
+            <div className="space-y-6 animate-fade-in p-6 max-w-4xl mx-auto flex flex-col h-[calc(100vh-120px)] text-left">
+              {/* Header card */}
+              <div className="bg-slate-900/20 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-sm shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-600/10 rounded-xl border border-blue-500/25">
+                    <Sparkles className="h-5 w-5 text-blue-500 animate-pulse" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-white">AI Sales Copilot</h2>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Query your CRM database, search document RAG knowledge, or get personalized outreach recommendations.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Chat Feed & suggestions */}
+              <div className="flex-1 min-h-0 bg-slate-900/20 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-sm flex flex-col justify-between">
+                
+                {/* Scrollable messages area */}
+                <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-6 scrollbar-thin scrollbar-thumb-slate-800">
+                  {chatMessages.map((msg, idx) => {
+                    const isAi = msg.role === 'assistant';
+                    return (
+                      <div
+                        key={idx}
+                        className={`flex gap-3 max-w-[85%] ${isAi ? 'mr-auto text-left' : 'ml-auto flex-row-reverse text-left'}`}
+                      >
+                        {/* Avatar */}
+                        <div className={`h-8 w-8 rounded-xl flex items-center justify-center shrink-0 border ${
+                          isAi 
+                            ? 'bg-blue-600/10 border-blue-500/20 text-blue-500 font-bold text-xs' 
+                            : 'bg-slate-800 border-slate-700 text-slate-300 font-bold text-xs'
+                        }`}>
+                          {isAi ? 'AI' : 'ME'}
+                        </div>
+
+                        {/* Content bubble */}
+                        <div className={`p-4 rounded-2xl border text-xs leading-relaxed whitespace-pre-line ${
+                          isAi
+                            ? 'bg-slate-950/50 border-slate-850 text-slate-200 font-sans'
+                            : 'bg-blue-600/20 border-blue-500/30 text-slate-100 shadow-md shadow-blue-600/5 font-sans'
+                        }`}>
+                          {msg.content}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Typing indicator */}
+                  {isChatLoading && (
+                    <div className="flex gap-3 mr-auto items-center animate-pulse">
+                      <div className="h-8 w-8 rounded-xl bg-blue-600/10 border border-blue-500/20 text-blue-500 font-bold text-xs flex items-center justify-center shrink-0">
+                        AI
+                      </div>
+                      <div className="bg-slate-950/50 border border-slate-850 px-4 py-3 rounded-2xl flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer with suggestions and input */}
+                <div className="shrink-0 space-y-4">
+                  {/* Suggestions cards */}
+                  <div className="flex flex-wrap gap-2">
+                    {chatSuggestions.map((sug, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleSendChatMessage(sug)}
+                        disabled={isChatLoading}
+                        className="px-3.5 py-1.5 bg-slate-950/60 hover:bg-slate-950 border border-slate-850 hover:border-slate-700 text-[10px] font-bold text-slate-350 hover:text-white rounded-xl transition disabled:opacity-50"
+                      >
+                        {sug}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Input form */}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleSendChatMessage();
+                    }}
+                    className="flex gap-3"
+                  >
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      placeholder={isChatLoading ? "Copilot is thinking..." : "Ask your copilot anything..."}
+                      disabled={isChatLoading}
+                      className="flex-1 bg-slate-950 border border-slate-850 hover:border-slate-800 focus:border-blue-500 focus:outline-none rounded-xl px-4 py-3 text-xs text-slate-100 placeholder-slate-500 transition disabled:opacity-50"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isChatLoading || !chatInput.trim()}
+                      className="px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl flex items-center justify-center transition disabled:opacity-50 active:scale-95 shadow-lg shadow-blue-600/20"
+                    >
+                      <Send className="h-4 w-4" />
+                    </button>
+                  </form>
+                </div>
+
+              </div>
             </div>
           )}
         </div>
