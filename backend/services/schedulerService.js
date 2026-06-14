@@ -10,8 +10,37 @@ const isTest = process.env.NODE_ENV === 'test' || process.env.MOCK_REDIS === 'tr
 const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 const queueName = 'follow-up-queue';
 
-let queue = null;
+let bullQueue = null;
+let mockQueue = null;
 let worker = null;
+let isRedisActive = false;
+
+// Constant wrapper interface that handles dynamic fallback/failover to the in-memory mock queue
+const queue = {
+  add: async (name, data, opts) => {
+    if (isRedisActive && bullQueue) {
+      try {
+        return await bullQueue.add(name, data, opts);
+      } catch (err) {
+        console.warn('⚠️ BullMQ add failed, falling back to In-Memory queue:', err.message);
+        return await mockQueue.add(name, data, opts);
+      }
+    } else {
+      return await mockQueue.add(name, data, opts);
+    }
+  },
+  getJobs: async (types) => {
+    if (isRedisActive && bullQueue) {
+      try {
+        return await bullQueue.getJobs(types);
+      } catch (err) {
+        console.warn('⚠️ BullMQ getJobs failed, returning empty list:', err.message);
+        return [];
+      }
+    }
+    return [];
+  }
+};
 
 // In-Memory Mock Queue for Test Environment
 const mockJobs = new Map(); // Maps leadId -> array of { jobId, timeoutId, templateType }
@@ -35,6 +64,7 @@ if (!isTest) {
   });
 
   connection.on('error', (err) => {
+    isRedisActive = false;
     if (!redisFailed) {
       redisFailed = true;
       console.warn(`⚠️ Redis connection failed (${redisUrl}). Defaulting to In-Memory Scheduler Mock. Error:`, err.message);
@@ -45,14 +75,20 @@ if (!isTest) {
     }
   });
 
+  connection.on('close', () => {
+    isRedisActive = false;
+    console.warn('🔌 Redis connection closed. Scheduler falling back to In-Memory mode.');
+  });
+
   connection.once('ready', () => {
     if (!redisFailed) {
       console.log('🔌 Redis connected successfully. Initializing BullMQ.');
       try {
-        queue = new Queue(queueName, { connection });
-        queue.on('error', (err) => {
+        bullQueue = new Queue(queueName, { connection });
+        bullQueue.on('error', (err) => {
           // Suppress further errors on the queue object
         });
+        isRedisActive = true;
 
         worker = new Worker(queueName, async (job) => {
           const { tenantId, leadId, templateType } = job.data;
@@ -68,6 +104,7 @@ if (!isTest) {
         });
       } catch (err) {
         console.error('❌ Failed to initialize BullMQ:', err.message);
+        isRedisActive = false;
         setupInMemoryMock();
       }
     }
@@ -75,7 +112,7 @@ if (!isTest) {
 }
 
 function setupInMemoryMock() {
-  queue = {
+  mockQueue = {
     add: async (name, data, opts) => {
       const { tenantId, leadId, templateType } = data;
       const delay = opts.delay || 0;
@@ -292,13 +329,14 @@ async function scheduleFollowUps(tenantId, leadId, customDelays = null) {
 async function cancelFollowUps(leadId) {
   const cleanLeadId = leadId.toString();
 
-  if (isTest || !worker) {
-    // Cancel in-memory scheduled timeouts
-    const jobs = mockJobs.get(cleanLeadId) || [];
-    for (const job of jobs) {
-      clearTimeout(job.timeoutId);
-    }
-    mockJobs.delete(cleanLeadId);
+  // Always cancel in-memory scheduled timeouts (just in case)
+  const jobs = mockJobs.get(cleanLeadId) || [];
+  for (const job of jobs) {
+    clearTimeout(job.timeoutId);
+  }
+  mockJobs.delete(cleanLeadId);
+
+  if (isTest || !isRedisActive || !worker) {
     return;
   }
 

@@ -25,23 +25,62 @@ if (process.env.PINECONE_API_KEY) {
  * with a ~38-word (~50 tokens) overlap to retain context across chunk boundaries.
  */
 function chunkText(text, maxTokens = 400, overlap = 50) {
-  const words = text.trim().split(/\s+/);
-  const chunks = [];
-  const chunkSize = Math.round(maxTokens * 0.75); // ~300 words
-  const overlapSize = Math.round(overlap * 0.75); // ~38 words
+  const maxWords = Math.round(maxTokens * 0.75); // ~300 words
+  const overlapSentencesCount = Math.max(1, Math.round(overlap / 25)); // ~2 sentences overlap
 
-  if (words.length <= chunkSize) {
-    return [text];
+  const textTrimmed = text.trim();
+  if (!textTrimmed) return [];
+
+  // Match sentences: anything ending with period, exclamation, or question mark, followed by space or end of line.
+  const sentences = textTrimmed.match(/[^.!?\r\n]+[.!?]+(\s+|$)/g) || 
+                    textTrimmed.split(/\r?\n/).filter(line => line.trim().length > 0);
+
+  if (sentences.length === 0) {
+    return [textTrimmed];
   }
 
-  let start = 0;
-  while (start < words.length) {
-    const end = Math.min(start + chunkSize, words.length);
-    const chunkWords = words.slice(start, end);
-    chunks.push(chunkWords.join(' '));
+  const chunks = [];
+  let currentChunkSentences = [];
+  let currentChunkWordCount = 0;
 
-    if (end === words.length) break;
-    start = start + chunkSize - overlapSize;
+  for (let i = 0; i < sentences.length; i++) {
+    const sentence = sentences[i].trim();
+    if (!sentence) continue;
+
+    const sentenceWords = sentence.split(/\s+/);
+    const sentenceWordCount = sentenceWords.length;
+
+    // If a single sentence is longer than maxWords, chunk it by words
+    if (sentenceWordCount > maxWords) {
+      if (currentChunkSentences.length > 0) {
+        chunks.push(currentChunkSentences.join(' '));
+        currentChunkSentences = [];
+        currentChunkWordCount = 0;
+      }
+      
+      let wordStart = 0;
+      while (wordStart < sentenceWords.length) {
+        const wordEnd = Math.min(wordStart + maxWords, sentenceWords.length);
+        chunks.push(sentenceWords.slice(wordStart, wordEnd).join(' '));
+        wordStart += (maxWords - 10);
+      }
+      continue;
+    }
+
+    if (currentChunkWordCount + sentenceWordCount > maxWords) {
+      chunks.push(currentChunkSentences.join(' '));
+      // Re-initialize with overlap sentences
+      const overlapSentences = currentChunkSentences.slice(-overlapSentencesCount);
+      currentChunkSentences = [...overlapSentences, sentence];
+      currentChunkWordCount = currentChunkSentences.reduce((acc, s) => acc + s.split(/\s+/).length, 0);
+    } else {
+      currentChunkSentences.push(sentence);
+      currentChunkWordCount += sentenceWordCount;
+    }
+  }
+
+  if (currentChunkSentences.length > 0) {
+    chunks.push(currentChunkSentences.join(' '));
   }
 
   return chunks;

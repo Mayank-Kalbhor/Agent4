@@ -30,6 +30,7 @@ const {
 const cookieParser = require('cookie-parser');
 const { corsMiddleware, csrfMiddleware, authRateLimiter, rbacMiddleware } = require('./middleware/authMiddleware');
 const authService = require('./services/authService');
+const aiAssistantService = require('./services/aiAssistantService');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -473,7 +474,8 @@ app.get('/api/auth/sso/google/callback', async (req, res) => {
         VALUES ($1, $2, 'rep', $3, 'google')
         RETURNING *;
       `;
-      const hashedPassword = await bcrypt.hash('sso_dummy_pwd_123!', 10);
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+      const hashedPassword = await bcrypt.hash(randomPassword, 10);
       const newUserRes = await executeGlobalQuery(insertUserSql, [tenantId, targetEmail, hashedPassword]);
       user = newUserRes[0];
     }
@@ -546,7 +548,8 @@ const handleSamlCallback = async (req, res) => {
         VALUES ($1, $2, 'rep', $3, 'saml')
         RETURNING *;
       `;
-      const hashedPassword = await bcrypt.hash('sso_dummy_pwd_123!', 10);
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+      const hashedPassword = await bcrypt.hash(randomPassword, 10);
       const newUserRes = await executeGlobalQuery(insertUserSql, [tenantId, email, hashedPassword]);
       user = newUserRes[0];
     }
@@ -864,6 +867,92 @@ app.get('/api/analytics', authenticateToken, rbacMiddleware(['admin', 'rep']), a
       });
     }
 
+    // 6. Lead Sources Query
+    const leadSourcesRes = await executeTenantQuery(
+      tenantId,
+      `SELECT COALESCE(consent_source, 'Direct Import') as source, COUNT(*)::int as count 
+       FROM leads 
+       WHERE tenant_id = $1 AND created_at >= $2 AND created_at <= $3 
+       GROUP BY consent_source`,
+      [tenantId, startStr, endStr]
+    );
+    const leadSourcesData = leadSourcesRes.map(row => ({
+      name: row.source,
+      value: row.count
+    }));
+
+    // 7. Lead Priority Query (for ICP Recommendations)
+    const leadPriorityRes = await executeTenantQuery(
+      tenantId,
+      `SELECT score, COUNT(*)::int as count 
+       FROM leads 
+       WHERE tenant_id = $1 AND created_at >= $2 AND created_at <= $3 
+       GROUP BY score`,
+      [tenantId, startStr, endStr]
+    );
+    const priorityCounts = leadPriorityRes.reduce((acc, row) => {
+      acc[row.score || 'low'] = row.count;
+      return acc;
+    }, { high: 0, medium: 0, low: 0 });
+    const totalScopedLeads = priorityCounts.high + priorityCounts.medium + priorityCounts.low;
+    const lowPriorityRatio = totalScopedLeads > 0 ? (priorityCounts.low / totalScopedLeads) * 100 : 0;
+
+    // 8. Knowledge Base Document Count (for RAG Recommendations)
+    const docCountRes = await executeTenantQuery(
+      tenantId,
+      'SELECT COUNT(*)::int as count FROM knowledge_base WHERE tenant_id = $1',
+      [tenantId]
+    );
+    const docCount = docCountRes[0]?.count || 0;
+
+    // 9. Recommendations Engine
+    const recommendations = [];
+
+    if (bounceRate > 5.0) {
+      recommendations.push({
+        type: 'warning',
+        category: 'Deliverability',
+        title: 'High Email Bounce Rate',
+        message: `Your bounce rate is currently ${bounceRate.toFixed(1)}%. We recommend cleaning your contact lists and verifying email addresses before running campaigns.`
+      });
+    }
+
+    if (lowPriorityRatio > 40.0) {
+      recommendations.push({
+        type: 'info',
+        category: 'Targeting',
+        title: 'Refine Ideal Customer Profile (ICP)',
+        message: `${lowPriorityRatio.toFixed(0)}% of your leads are rated Low Fit. Consider updating your target job titles and company sizes in Settings to focus outreach on higher-value prospects.`
+      });
+    }
+
+    if (replyRate < 15.0 && funnelData.contacted > 0) {
+      recommendations.push({
+        type: 'warning',
+        category: 'Outreach',
+        title: 'Optimize Subject & Body Copy',
+        message: `Your campaign reply rate of ${replyRate.toFixed(1)}% is below the 15% target. Try running A/B tests on subject lines and keeping outreach emails under 100 words.`
+      });
+    }
+
+    if (docCount === 0) {
+      recommendations.push({
+        type: 'info',
+        category: 'RAG Quality',
+        title: 'Knowledge Base is Empty',
+        message: 'Upload product documentation, pitch decks, or FAQs under the Knowledge Base tab to ground AI email generation with factual company context.'
+      });
+    }
+
+    if (recommendations.length === 0) {
+      recommendations.push({
+        type: 'success',
+        category: 'Outreach',
+        title: 'Campaign Performance is Healthy',
+        message: 'Keep sourcing high-priority leads and testing personal value propositions to maintain high response rates!'
+      });
+    }
+
     res.json({
       funnel: [
         { name: 'Leads', value: funnelData.total_leads, percentage: 100 },
@@ -881,11 +970,39 @@ app.get('/api/analytics', authenticateToken, rbacMiddleware(['admin', 'rep']), a
         bounceRate: parseFloat(bounceRate.toFixed(1)),
         cacEstimate: parseFloat(cacEstimate.toFixed(2))
       },
-      campaignsTable: campaignsTableData
+      campaignsTable: campaignsTableData,
+      leadSources: leadSourcesData,
+      recommendations: recommendations
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to retrieve analytics data.' });
+  }
+});
+
+// AI Sales Copilot Chat Endpoint (RLS Scoped)
+app.post('/api/assistant/chat', authenticateToken, rbacMiddleware(['admin', 'rep']), async (req, res) => {
+  const { tenantId } = req.user;
+  const { message, history } = req.body;
+
+  if (!message || typeof message !== 'string') {
+    return res.status(400).json({ error: 'Message is required and must be a string.' });
+  }
+
+  try {
+    const reply = await aiAssistantService.generateResponse(tenantId, message, history || []);
+    res.json({
+      success: true,
+      reply,
+      suggestions: [
+        'Who are my highest scoring leads?',
+        'Show scheduled meetings for this week.',
+        'How can we refine our ICP settings?'
+      ]
+    });
+  } catch (err) {
+    console.error('[Assistant Endpoint Error]:', err.message);
+    res.status(500).json({ error: 'Failed to generate assistant response.' });
   }
 });
 

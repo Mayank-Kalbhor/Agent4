@@ -84,9 +84,14 @@ async function rotateRefreshToken(tokenStr) {
   const rToken = res.rows[0];
 
   // Replay Attack Detection: if token is already revoked, terminate all active sessions for safety
-  if (rToken.revoked || new Date(rToken.expires_at) < new Date()) {
+  if (rToken.revoked) {
     await query('UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1', [rToken.user_id], false);
-    throw new Error('Session compromised or expired. Please log in again.');
+    throw new Error('Session compromised. Please log in again.');
+  }
+
+  // Natural Expiration: invalidate only this session
+  if (new Date(rToken.expires_at) < new Date()) {
+    throw new Error('Session expired. Please log in again.');
   }
 
   // Revoke the current token
