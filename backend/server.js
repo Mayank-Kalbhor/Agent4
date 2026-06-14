@@ -105,7 +105,7 @@ const calculateAIScore = (name, title, company, notes) => {
 
 // Simulated GPT-4 personalized outreach generator
 const generateAIEmail = (leadName, company, title) => {
-  return `Hi ${leadName},\n\nI noticed your impressive work as ${title} at ${company}. \n\nStarting and scaling pipelines can be incredibly demanding. Our AI Sales Agent SaaS automates lead capturing, scoring, and follow-ups entirely in the background, allowing your reps to focus strictly on closing high-value deals. \n\nDo you have 10 minutes for a quick chat next Wednesday at 2:00 PM?\n\nBest regards,\nAI Sales Executive`;
+  return `Hi ${leadName},\n\nI noticed your impressive work as ${title} at ${company}. \n\nStarting and scaling pipelines can be incredibly demanding. Our AGENT4 SaaS automates lead capturing, scoring, and follow-ups entirely in the background, allowing your reps to focus strictly on closing high-value deals. \n\nDo you have 10 minutes for a quick chat next Wednesday at 2:00 PM?\n\nBest regards,\nAI Sales Executive`;
 };
 
 // ==========================================
@@ -1955,7 +1955,7 @@ if (require.main === module) {
   });
 
   app.listen(PORT, () => {
-    console.log(`🚀 Sales Agent Multi-Tenant Express Server running on http://localhost:${PORT}`);
+    console.log(`🚀 AGENT4 Multi-Tenant Express Server running on http://localhost:${PORT}`);
   });
 }
 

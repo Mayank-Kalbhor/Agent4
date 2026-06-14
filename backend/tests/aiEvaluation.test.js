@@ -15,7 +15,7 @@ const fixtureLeads = [
 ];
 
 const sender = {
-  companyName: 'AI Sales Agent SaaS',
+  companyName: 'AGENT4 SaaS',
   senderName: 'Sales Specialist'
 };
 

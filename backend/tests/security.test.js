@@ -50,7 +50,7 @@ function generateToken(tenantId) {
   );
 }
 
-describe('AI Sales Agent Security Tests', () => {
+describe('AGENT4 Security Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     leadOwnerTenantId = TENANT_B_ID;

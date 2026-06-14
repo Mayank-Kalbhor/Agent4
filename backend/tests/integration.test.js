@@ -115,7 +115,7 @@ function generateToken() {
   );
 }
 
-describe('AI Sales Agent Integration Tests', () => {
+describe('AGENT4 Integration Tests', () => {
   let token;
 
   beforeEach(() => {

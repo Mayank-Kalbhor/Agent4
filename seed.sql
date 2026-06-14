@@ -1,4 +1,4 @@
--- Seed Script: Multi-Tenant AI Sales Agent SaaS Mock Data
+-- Seed Script: Multi-Tenant AGENT4 SaaS Mock Data
 -- Target Database: PostgreSQL
 -- Installs seed data for two separate tenants to verify RLS and isolation boundaries.
 
@@ -115,7 +115,7 @@ INSERT INTO campaigns (id, tenant_id, name, channel, cadence, created_by) VALUES
 INSERT INTO messages (id, tenant_id, lead_id, campaign_id, channel, direction, content, sent_at, opened_at, replied_at, status) VALUES
 -- Tenant 1: Acme Enterprise Messages
 ('a4000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-000000000001', 'a3000000-0000-0000-0000-000000000001', 'email', 'outbound', 
-'Hi John, noticed Stripe recently expanded its engineering teams. I would love to share how our AI Sales Agent SaaS can streamline your pipeline. Let me know if you have 10 minutes next week.', 
+'Hi John, noticed Stripe recently expanded its engineering teams. I would love to share how our AGENT4 SaaS can streamline your pipeline. Let me know if you have 10 minutes next week.', 
 NOW() - INTERVAL '3 days', NOW() - INTERVAL '2 days' - INTERVAL '23 hours', NOW() - INTERVAL '2 days', 'replied'),
 
 ('a4000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-000000000001', 'a3000000-0000-0000-0000-000000000001', 'email', 'inbound', 

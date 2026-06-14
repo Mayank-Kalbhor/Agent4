@@ -88,7 +88,7 @@ async function fetchSchedulingLink(tenantId, userId) {
  * Sends a webhook notification to sales rep (Slack webhook or console mock).
  */
 async function notifySalesRep(tenantId, eventType, lead, meeting) {
-  const message = `🔔 *Sales Agent SaaS Notification*
+  const message = `🔔 *AGENT4 SaaS Notification*
 Event: \`${eventType}\`
 Lead: *${lead.name}* (${lead.company || 'Unknown Co'})
 Email: ${lead.email}

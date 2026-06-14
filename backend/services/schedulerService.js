@@ -151,7 +151,7 @@ async function processFollowUpJob(tenantId, leadId, templateType) {
     
     const valueProp = tenant.settings?.value_proposition || 'AI-powered pipeline automation, lead capture, and immediate lead scoring';
     const sender = {
-      name: 'Sales Agent AI',
+      name: 'AGENT4',
       companyName: tenant.name,
       value_proposition: valueProp
     };
@@ -172,7 +172,7 @@ async function processFollowUpJob(tenantId, leadId, templateType) {
 
       if (latestEmail && !latestEmail.opened_at) {
         const { sendSMS } = require('./twilioService');
-        const smsBody = `Hi ${lead.name}, I sent you an email regarding our AI Sales Agent. Let me know if you would like to connect!`;
+        const smsBody = `Hi ${lead.name}, I sent you an email regarding our AGENT4. Let me know if you would like to connect!`;
         await sendSMS(tenantId, leadId, smsBody);
         return;
       } else {

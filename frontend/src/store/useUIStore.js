@@ -13,6 +13,7 @@ export const useUIStore = create((set) => ({
   // CSV Import States
   isCSVModalOpen: false,
   csvHeaders: [],
+  csvRows: [],
   csvPreviewRows: [],
   csvColumnMapping: {},
 
@@ -24,9 +25,9 @@ export const useUIStore = create((set) => ({
   setSelectedLeadId: (id) => set({ selectedLeadId: id }),
   
   setCSVModalOpen: (isOpen) => set({ isCSVModalOpen: isOpen }),
-  setCSVData: (headers, rows) => set({ csvHeaders: headers, csvPreviewRows: rows, csvColumnMapping: {} }),
+  setCSVData: (headers, rows) => set({ csvHeaders: headers, csvRows: rows, csvPreviewRows: rows.slice(0, 5), csvColumnMapping: {} }),
   setCSVColumnMapping: (dbField, csvIndex) => set((state) => ({
     csvColumnMapping: { ...state.csvColumnMapping, [dbField]: csvIndex }
   })),
-  resetCSVData: () => set({ csvHeaders: [], csvPreviewRows: [], csvColumnMapping: {} })
+  resetCSVData: () => set({ csvHeaders: [], csvRows: [], csvPreviewRows: [], csvColumnMapping: {} })
 }));

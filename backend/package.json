@@ -1,7 +1,7 @@
 {
   "name": "sales-agent-backend",
   "version": "1.0.0",
-  "description": "Multi-Tenant AI Sales Agent SaaS Backend",
+  "description": "Multi-Tenant AGENT4 SaaS Backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

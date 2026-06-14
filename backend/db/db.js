@@ -169,6 +169,36 @@ if (process.env.NODE_ENV !== 'test') {
 
 
 /**
+ * Helper to extract the primary table name or alias from a query beforePart.
+ */
+function getTablePrefix(sql) {
+  const sqlTrimmed = sql.trim();
+  let match = /\bFROM\s+([a-zA-Z0-9_.]+)(?:\s+(?:AS\s+)?([a-zA-Z0-9_]+))?/i.exec(sqlTrimmed);
+  if (!match) {
+    match = /\bUPDATE\s+([a-zA-Z0-9_.]+)(?:\s+(?:AS\s+)?([a-zA-Z0-9_]+))?/i.exec(sqlTrimmed);
+  }
+  if (!match) {
+    match = /\bDELETE\s+FROM\s+([a-zA-Z0-9_.]+)(?:\s+(?:AS\s+)?([a-zA-Z0-9_]+))?/i.exec(sqlTrimmed);
+  }
+
+  if (match) {
+    const tableName = match[1];
+    let alias = match[2];
+
+    const reservedKeywords = [
+      'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'CROSS', 'NATURAL', 'ON', 'USING',
+      'WHERE', 'ORDER', 'GROUP', 'LIMIT', 'OFFSET', 'UNION', 'HAVING', 'AS', 'SET'
+    ];
+    if (alias && reservedKeywords.includes(alias.toUpperCase())) {
+      alias = null;
+    }
+
+    return alias ? alias : tableName;
+  }
+  return null;
+}
+
+/**
  * Automatically appends 'tenant_id = $N' to SELECT, UPDATE, and DELETE SQL queries.
  * Accounts for existing WHERE clauses and boundary clauses (ORDER BY, LIMIT, etc.).
  */
@@ -205,6 +235,15 @@ function appendTenantCondition(sql, paramIndex) {
   const afterPart = sqlTrimmed.substring(splitIndex).trim();
   const suffix = afterPart ? ` ${afterPart}` : '';
 
+  // Use table prefix if query contains JOIN to avoid ambiguous column error
+  let columnRef = 'tenant_id';
+  if (sqlUpper.includes('JOIN')) {
+    const prefix = getTablePrefix(beforePart);
+    if (prefix) {
+      columnRef = `${prefix}.tenant_id`;
+    }
+  }
+
   // Check if there is an outer WHERE clause (ignoring nested parenthesis like subqueries)
   let hasOuterWhere = false;
   let parenCount = 0;
@@ -220,47 +259,81 @@ function appendTenantCondition(sql, paramIndex) {
   }
 
   if (hasOuterWhere) {
-    return `${beforePart} AND tenant_id = $${paramIndex}${suffix}`;
+    return `${beforePart} AND ${columnRef} = $${paramIndex}${suffix}`;
   } else {
-    return `${beforePart} WHERE tenant_id = $${paramIndex}${suffix}`;
+    return `${beforePart} WHERE ${columnRef} = $${paramIndex}${suffix}`;
   }
 }
 
 // Intercept pool.connect to set session level RLS parameter for Row-Level Security
 const originalConnect = pool.connect.bind(pool);
-pool.connect = async function (...args) {
-  const client = await originalConnect(...args);
+pool.connect = function (...args) {
+  const callback = typeof args[0] === 'function' ? args[0] : null;
   const store = tenantStorage.getStore();
   const activeTenantId = store ? store.tenantId : null;
 
-  if (activeTenantId) {
-    try {
-      // Set the session setting for current client checkout
-      await client.query(`SET app.current_tenant_id = ${client.escapeLiteral(activeTenantId)}`);
-    } catch (err) {
-      try {
-        client.release();
-      } catch (e) {}
-      throw err;
-    }
+  if (callback) {
+    return originalConnect((err, client, release) => {
+      if (err) return callback(err);
+
+      // Intercept release to reset the tenant context session variable
+      const originalRelease = client.release.bind(client);
+      client.release = function (destroy) {
+        try {
+          const q = client.query('RESET app.current_tenant_id');
+          if (q && typeof q.catch === 'function') {
+            q.catch(() => {});
+          }
+        } catch (e) {}
+        try {
+          return originalRelease(destroy);
+        } catch (e) {}
+      };
+
+      if (activeTenantId) {
+        client.query(`SET app.current_tenant_id = ${client.escapeLiteral(activeTenantId)}`)
+          .then(() => {
+            callback(null, client, client.release);
+          })
+          .catch((queryErr) => {
+            try {
+              client.release();
+            } catch (e) {}
+            callback(queryErr);
+          });
+      } else {
+        callback(null, client, client.release);
+      }
+    });
   }
 
-  // Intercept release to reset the tenant context session variable
-  const originalRelease = client.release.bind(client);
-  client.release = function (destroy) {
-    // Attempt to reset session variable before returning to the pool to prevent leakage
-    try {
-      const q = client.query('RESET app.current_tenant_id');
-      if (q && typeof q.catch === 'function') {
-        q.catch(() => {});
+  return originalConnect().then(async (client) => {
+    if (activeTenantId) {
+      try {
+        await client.query(`SET app.current_tenant_id = ${client.escapeLiteral(activeTenantId)}`);
+      } catch (err) {
+        try {
+          client.release();
+        } catch (e) {}
+        throw err;
       }
-    } catch (e) {}
-    try {
-      return originalRelease(destroy);
-    } catch (e) {}
-  };
+    }
 
-  return client;
+    const originalRelease = client.release.bind(client);
+    client.release = function (destroy) {
+      try {
+        const q = client.query('RESET app.current_tenant_id');
+        if (q && typeof q.catch === 'function') {
+          q.catch(() => {});
+        }
+      } catch (e) {}
+      try {
+        return originalRelease(destroy);
+      } catch (e) {}
+    };
+
+    return client;
+  });
 };
 
 // Reusable db.query helper
@@ -275,7 +348,7 @@ async function query(sql, params = [], tenantId = null) {
   if (activeTenantId) {
     const paramIndex = queryParams.length + 1;
     const modifiedSql = appendTenantCondition(sql, paramIndex);
-    if (modifiedSql !== sql) {
+    if (modifiedSql !== sql.trim()) {
       querySql = modifiedSql;
       queryParams.push(activeTenantId);
     }

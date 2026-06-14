@@ -1,4 +1,4 @@
--- Migration Script: Multi-Tenant AI Sales Agent SaaS Database Schema
+-- Migration Script: Multi-Tenant AGENT4 SaaS Database Schema
 -- Target Database: PostgreSQL
 
 -- Enable UUID extension if not enabled

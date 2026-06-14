@@ -1,7 +1,7 @@
 {
   "name": "sales-agent-saas",
   "version": "1.0.0",
-  "description": "AI-Powered Sales Agent SaaS Product - Local Prototype",
+  "description": "AGENT4 SaaS Product - Local Prototype",
   "scripts": {
     "install-all": "npm install --prefix backend && npm install --prefix frontend",
     "server": "npm run start --prefix backend",

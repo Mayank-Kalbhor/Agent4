@@ -1,6 +1,6 @@
-# AI-Powered Sales Agent SaaS (Local Prototype)
+# AGENT4 SaaS (Local Prototype)
 
-A high-performance, multi-tenant AI Sales Agent SaaS platform designed to automate lead ingestion, AI lead scoring, RAG-grounded personalized outreach, and A/B campaign execution with a built-in human-in-the-loop approval mechanism. 
+A high-performance, multi-tenant AGENT4 SaaS platform designed to automate lead ingestion, AI lead scoring, RAG-grounded personalized outreach, and A/B campaign execution with a built-in human-in-the-loop approval mechanism. 
 
 ---
 
