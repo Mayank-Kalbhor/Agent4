@@ -4,19 +4,42 @@ const request = require('supertest');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
-// 1. Mock otplib to prevent Jest ESM parser errors on @scure/base
-jest.mock('otplib', () => {
-  return {
-    generateSecret: jest.fn(() => 'MOCKSECRET1234567890'),
-    generateURI: jest.fn(({ secret, label, issuer }) => `otpauth://totp/${issuer}:${label}?secret=${secret}`),
-    verifySync: jest.fn(({ token, secret }) => {
-      return { valid: token === '123456' };
-    }),
-    verify: jest.fn(async ({ token, secret }) => {
-      return { valid: token === '123456' };
-    }),
-  };
-});
+// Custom Base32 Decoder and HOTP generator for testing
+function base32Decode(str) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const cleaned = str.replace(/=+$/, '').toUpperCase();
+  let bin = '';
+  for (let i = 0; i < cleaned.length; i++) {
+    const val = alphabet.indexOf(cleaned[i]);
+    if (val === -1) continue;
+    bin += val.toString(2).padStart(5, '0');
+  }
+  const bytes = [];
+  for (let i = 0; i + 8 <= bin.length; i += 8) {
+    bytes.push(parseInt(bin.substring(i, i + 8), 2));
+  }
+  return Buffer.from(bytes);
+}
+
+function generateHOTP(secretBuffer, counter) {
+  const counterBuffer = Buffer.alloc(8);
+  counterBuffer.writeUInt32BE(0, 0);
+  counterBuffer.writeUInt32BE(counter, 4);
+
+  const hmac = require('crypto').createHmac('sha1', secretBuffer);
+  hmac.update(counterBuffer);
+  const hmacResult = hmac.digest();
+
+  const offset = hmacResult[hmacResult.length - 1] & 0xf;
+  const code =
+    ((hmacResult[offset] & 0x7f) << 24) |
+    ((hmacResult[offset + 1] & 0xff) << 16) |
+    ((hmacResult[offset + 2] & 0xff) << 8) |
+    (hmacResult[offset + 3] & 0xff);
+
+  const otp = code % 1000000;
+  return otp.toString().padStart(6, '0');
+}
 
 // 2. Mock PG database client with in-memory database simulation
 const dbState = {
@@ -470,14 +493,20 @@ describe('SaaS Authentication & Authorization Service Tests', () => {
       
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.secret).toBe('MOCKSECRET1234567890');
+      
+      const secret = res.body.secret;
+      expect(secret).toHaveLength(16);
       expect(res.body.otpauth).toContain('AI-Sales-Agent-SaaS');
 
       // 3. Verify setup code to enable 2FA in DB
+      const secretBuffer = base32Decode(secret);
+      const currentCounter = Math.floor(Date.now() / 1000 / 30);
+      const correctCode = generateHOTP(secretBuffer, currentCounter);
+
       res = await request(app)
         .post('/api/auth/2fa/verify')
         .set('Authorization', `Bearer ${mfaToken}`)
-        .send({ code: '123456' }); // 123456 is mock valid code
+        .send({ code: correctCode });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -486,7 +515,7 @@ describe('SaaS Authentication & Authorization Service Tests', () => {
       // 4. Complete login using 2FA login route
       res = await request(app)
         .post('/api/auth/2fa/login')
-        .send({ mfaToken, code: '123456' });
+        .send({ mfaToken, code: correctCode });
 
       expect(res.status).toBe(200);
       expect(res.body.accessToken).toBeDefined();
@@ -503,12 +532,18 @@ describe('SaaS Authentication & Authorization Service Tests', () => {
       const mfaToken = res.body.mfaToken;
 
       // Enable 2FA secret first
-      adminUser.two_factor_secret = 'MOCKSECRET1234567890';
+      const testSecret = 'MOCKSECRET1234567890';
+      adminUser.two_factor_secret = testSecret;
       adminUser.two_factor_enabled = true;
+
+      const secretBuffer = base32Decode(testSecret);
+      const currentCounter = Math.floor(Date.now() / 1000 / 30);
+      const correctCode = generateHOTP(secretBuffer, currentCounter);
+      const incorrectCode = correctCode === '999999' ? '000000' : '999999';
 
       res = await request(app)
         .post('/api/auth/2fa/login')
-        .send({ mfaToken, code: '999999' }); // incorrect code
+        .send({ mfaToken, code: incorrectCode }); // incorrect code
 
       expect(res.status).toBe(401);
       expect(res.body.error).toContain('Invalid 2FA code');
