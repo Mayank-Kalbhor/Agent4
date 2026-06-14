@@ -1,13 +1,45 @@
 const { Pool } = require('pg');
 const { AsyncLocalStorage } = require('async_hooks');
+const fs = require('fs');
+const path = require('path');
 
 const tenantStorage = new AsyncLocalStorage();
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/ai_sales_agent',
+  connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL || 'postgres://postgres:postgres@localhost:5432/ai_sales_agent',
 });
 
 if (process.env.NODE_ENV !== 'test') {
+  // Check if base tables exist (e.g. users table)
+  pool.query("SELECT to_regclass('public.users')")
+    .then(async (res) => {
+      if (!res.rows[0].to_regclass) {
+        console.log('Database tables do not exist. Executing schema.sql and seed.sql...');
+        try {
+          const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
+          const seedSql = fs.readFileSync(path.join(__dirname, 'seed.sql'), 'utf8');
+          
+          // Execute schema.sql
+          await pool.query(schemaSql);
+          console.log('🛡️ Database schema initialized successfully.');
+          
+          // Execute seed.sql
+          await pool.query(seedSql);
+          console.log('🛡️ Database seeded successfully.');
+        } catch (migErr) {
+          console.error('❌ Failed to run database migrations:', migErr.message);
+        }
+      } else {
+        console.log('🛡️ Database tables verified.');
+      }
+      
+      // Run self-healing column checks
+      runSelfHealing();
+    })
+    .catch(err => console.error('⚠️ Database verification error:', err.message));
+}
+
+function runSelfHealing() {
   // Programmatic schema self-healing: add similarity column if not exists
   pool.query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS similarity NUMERIC DEFAULT 0.0')
     .then(() => console.log('🛡️ Database self-healing: Leads similarity column verified.'))
